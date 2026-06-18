@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+venv/
+.venv/
+# prediction service is built from its own context (prediction_service/Dockerfile)
+prediction_service/

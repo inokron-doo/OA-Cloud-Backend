@@ -1,0 +1,14 @@
+
+# Internal-only docs (kept locally, not published)
+docs/CLEANUP_AUDIT.md
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+__pycache__
+*.pyc, 

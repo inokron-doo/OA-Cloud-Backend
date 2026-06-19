@@ -151,6 +151,12 @@ async def get_barn_weather_history(
     hours: int = Query(24, description="Hours of history", ge=1, le=168),
     start_time: datetime = Query(None, description="Optional start datetime for anchoring"),
     end_time: datetime = Query(None, description="Optional end datetime for anchoring"),
+    bucket_minutes: int = Query(
+        60,
+        description="Time-bucket width in minutes for the actuals series (e.g. 15, 30, 60)",
+        ge=1,
+        le=1440,
+    ),
     current_user: dict = Depends(get_current_user)
 ):
     """Get historical weather observations from database"""
@@ -160,7 +166,10 @@ async def get_barn_weather_history(
         if start_time is None and end_time is None:
             start_time, end_time = get_anchor_window(history_hours=hours)
 
-        history = db.get_weather_history(barn_id, hours=hours, start_time=start_time, end_time=end_time)
+        history = db.get_weather_history(
+            barn_id, hours=hours, start_time=start_time, end_time=end_time,
+            bucket_minutes=bucket_minutes,
+        )
         if wants_jsonld(request):
             return ld_response([weather_history_row_to_ld(barn_id, row) for row in history])
         return {

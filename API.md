@@ -252,7 +252,7 @@ THI (Temperature-Humidity Index) is computed for all weather data and forecast p
 | Method | Path | Description |
 |---|---|---|
 | GET | `/weather/current/` | Live weather at lat/lon |
-| GET | `/weather/{barn_id}/history` | Historical observations |
+| GET | `/weather/{barn_id}/history` | Historical observations (optional `bucket_minutes`, default 60, sets the actuals resolution — e.g. 15 or 30 for a finer series) |
 | GET | `/weather/{barn_id}/forecast` | 5-day hourly forecast (max 120 h) |
 | GET | `/heat-stress/{barn_id}/status` | Current THI level + alarm flags |
 | GET | `/heat-stress/{barn_id}/feeding-predictions` | **Deprecated** — R1 predicted feed-intake drop; superseded by predicted `heat_stress` alerts via `GET /feed/alerts/new?origin=all` |

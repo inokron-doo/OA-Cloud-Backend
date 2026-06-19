@@ -266,9 +266,14 @@ def normalize_feeding_events(feeding_events: list, settings: dict) -> list:
         if not scheduled_time:
             continue
 
-        scheduled_time = pd.to_datetime(scheduled_time, utc=True, errors="coerce")
+        scheduled_time = pd.to_datetime(scheduled_time, errors="coerce")
         if pd.isna(scheduled_time):
             continue
+        if scheduled_time.tzinfo is not None:
+            scheduled_time = scheduled_time.tz_localize(None)
+        scheduled_time = scheduled_time.tz_localize(
+            tz, ambiguous=True, nonexistent="shift_forward"
+        ).tz_convert("UTC")
 
         title = source.get("title") or event.get("title")
         quantity_kg = parsed.get("quantity_kg")

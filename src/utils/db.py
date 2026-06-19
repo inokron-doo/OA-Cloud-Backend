@@ -2490,19 +2490,25 @@ class PGDB:
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (obs_id, barn_id, temperature, humidity, thi, obs_time))
                 conn.commit()
-    def get_weather_history(self, barn_id: str, hours: int = 24, start_time=None, end_time=None):
+    def get_weather_history(self, barn_id: str, hours: int = 24, start_time=None, end_time=None,
+                            bucket_minutes: int = 60):
+        bucket_minutes = max(1, min(int(bucket_minutes), 1440))
         with self.get_connection_context() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = """
-                    SELECT 
-                        date_trunc('hour', time AT TIME ZONE 'Europe/Ljubljana') AT TIME ZONE 'UTC' AS obs_time,
+                    SELECT
+                        date_bin(
+                            make_interval(mins => %s),
+                            time AT TIME ZONE 'Europe/Ljubljana',
+                            TIMESTAMP '2000-01-01'
+                        ) AT TIME ZONE 'UTC' AS obs_time,
                         AVG(temperature) AS temperature,
                         AVG(humidity) AS humidity,
                         AVG((1.8 * temperature + 32) - (0.55 - 0.0055 * humidity) * (1.8 * temperature - 26)) AS thi
                     FROM telemetry_readings
                     WHERE barn_id = %s
                 """
-                params = [barn_id]
+                params = [bucket_minutes, barn_id]
                 if start_time:
                     query += " AND time >= %s"
                     params.append(start_time)

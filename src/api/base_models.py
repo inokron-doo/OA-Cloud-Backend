@@ -1,15 +1,8 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from typing import Any, Dict, List, Optional, Literal
 from datetime import datetime
 
 
-
-class UserRegister(BaseModel):
-    username: str = Field(examples=["alice"])
-    email: EmailStr = Field(examples=["alice@example.com"])
-    password: str = Field(examples=["s3cr3t-passw0rd"])
-    first_name: str = Field("", examples=["Alice"])
-    last_name: str = Field("", examples=["Anderson"])
 
 class UserLogin(BaseModel):
     username: str = Field(examples=["alice"], description="Username or email address")
@@ -34,13 +27,6 @@ class TokenRefresh(BaseModel):
 
 class TokenValidate(BaseModel):
     token: str = Field(examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."])
-
-class ForgotPassword(BaseModel):
-    email: EmailStr = Field(examples=["alice@example.com"])
-
-class ResetPassword(BaseModel):
-    token: str = Field(examples=["a1b2c3d4e5f6..."])
-    new_password: str = Field(examples=["new-s3cr3t-passw0rd"])
 
 class CalendarActivityCreate(BaseModel):
     title: str = Field(examples=["Morning feeding (25 kg)"])

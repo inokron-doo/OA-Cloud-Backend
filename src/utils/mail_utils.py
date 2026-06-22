@@ -67,29 +67,8 @@ class EmailService:
             logger.error(f"Failed to send email to {to_email}: {e}")
             return False
 
-    async def send_password_reset_email_async(self, to_email, reset_token):
-        return await asyncio.to_thread(self.send_password_reset_email, to_email, reset_token)
-
     async def send_alert_email_async(self, to_email, alert_data):
         return await asyncio.to_thread(self.send_alert_email, to_email, alert_data)
-
-    def send_password_reset_email(self, to_email, reset_token):
-        reset_link = f"{self.frontend_url}/reset-password?token={reset_token}"
-        
-        subject = "Password Reset Request"
-        html_content = f"""
-        <html>
-            <body>
-                <h2>Password Reset Request</h2>
-                <p>You requested to reset your password. Click the link below to reset it:</p>
-                <p><a href="{reset_link}">Reset Password</a></p>
-                <p>This link will expire in 1 hour.</p>
-                <p>If you did not request this, please ignore this email.</p>
-            </body>
-        </html>
-        """
-        
-        return self._send_email(to_email, subject, html_content)
 
     def send_alert_email(self, to_email, alert_data):
         alert_type = alert_data.get('alert_type', 'Alert')

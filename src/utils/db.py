@@ -105,94 +105,23 @@ class PGDB:
                 except Exception as e:
                     logger.error(f"Error returning connection: {e}")
    
-    def make_django_password(self, password: str) -> str:
-        algorithm = 'pbkdf2_sha256'
-        iterations = 600000
-        salt = secrets.token_hex(8)
-        
-        hash_obj = hashlib.pbkdf2_hmac(
-            'sha256',
-            password.encode('utf-8'),
-            salt.encode('utf-8'),
-            iterations
-        )
-        hash_str = hash_obj.hex()
-        
-        return f"{algorithm}${iterations}${salt}${hash_str}"
-    
     def verify_django_password(self, password: str, encoded: str) -> bool:
         try:
             algorithm, iterations, salt, hash_str = encoded.split('$')
             iterations = int(iterations)
-            
-            hash_obj = hashlib.pbkdf2_hmac(
+            hash_bytes = hashlib.pbkdf2_hmac(
                 'sha256',
                 password.encode('utf-8'),
                 salt.encode('utf-8'),
                 iterations
             )
-            
-            return hash_obj.hex() == hash_str
-        except:
+            # Accept both Django-native base64 output and legacy SFS hex output.
+            return (
+                base64.b64encode(hash_bytes).decode('ascii') == hash_str
+                or hash_bytes.hex() == hash_str
+            )
+        except Exception:
             return False
-   
-    def register_user(self, user_data):
-        with self.get_connection_context() as conn:
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    cursor.execute(
-                        "SELECT id FROM auth_user WHERE email = %s",
-                        (user_data['email'],)
-                    )
-                    if cursor.fetchone():
-                        raise ValueError("Email already registered")
-                   
-                    cursor.execute(
-                        "SELECT id FROM auth_user WHERE username = %s",
-                        (user_data['username'],)
-                    )
-                    if cursor.fetchone():
-                        raise ValueError("Username already registered")
-                   
-                    hashed_password = self.make_django_password(user_data['password'])
-                   
-                    cursor.execute("""
-                        INSERT INTO auth_user (
-                            username, email, password, first_name, last_name,
-                            is_active, is_staff, is_superuser, date_joined
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        RETURNING id, username, email, first_name, last_name
-                    """, (
-                        user_data['username'],
-                        user_data['email'],
-                        hashed_password,
-                        user_data.get('first_name', ''),
-                        user_data.get('last_name', ''),
-                        True,
-                        False,
-                        False,
-                        datetime.utcnow()
-                    ))
-                   
-                    row = cursor.fetchone()
-                    conn.commit()
-                   
-                    return {
-                        "id": row["id"],
-                        "username": row["username"],
-                        "email": row["email"],
-                        "first_name": row["first_name"],
-                        "last_name": row["last_name"]
-                    }
-                   
-            except ValueError:
-                conn.rollback()
-                raise
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error in register_user: {e}")
-                raise
    
     def login_user(self, user_data):
         with self.get_connection_context() as conn:
@@ -209,7 +138,7 @@ class PGDB:
                         cursor.execute("""
                             SELECT id, username, first_name, last_name, email, password
                             FROM auth_user
-                            WHERE username = %s AND is_active = TRUE
+                            WHERE LOWER(username) = LOWER(%s) AND is_active = TRUE
                             LIMIT 1
                         """, (user_data['username'],))
                    
@@ -247,7 +176,7 @@ class PGDB:
         with self.get_connection_context() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
-                    SELECT id, username, first_name, last_name, email
+                    SELECT id, username, first_name, last_name, email, is_superuser, is_staff
                     FROM auth_user
                     WHERE id = %s AND is_active = TRUE
                 """, (user_id,))
@@ -258,15 +187,16 @@ class PGDB:
                         "username": row['username'],
                         "email": row['email'],
                         "first_name": row.get('first_name', ''),
-                        "last_name": row.get('last_name', '')
+                        "last_name": row.get('last_name', ''),
+                        "is_admin": row.get('is_superuser', False) or row.get('is_staff', False),
                     }
                 return None
-    
+
     def get_user_by_username(self, username: str):
         with self.get_connection_context() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 cursor.execute("""
-                    SELECT id, username, first_name, last_name, email
+                    SELECT id, username, first_name, last_name, email, is_superuser, is_staff
                     FROM auth_user
                     WHERE username = %s AND is_active = TRUE
                 """, (username.lower(),))
@@ -277,7 +207,8 @@ class PGDB:
                         "username": row['username'],
                         "email": row['email'],
                         "first_name": row.get('first_name', ''),
-                        "last_name": row.get('last_name', '')
+                        "last_name": row.get('last_name', ''),
+                        "is_admin": row.get('is_superuser', False) or row.get('is_staff', False),
                     }
                 return None
     
@@ -1225,8 +1156,8 @@ class PGDB:
         with self.get_connection_context() as conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = """
-                    SELECT 
-                        q.time AT TIME ZONE 'Europe/Ljubljana' AT TIME ZONE 'UTC' AS time,
+                    SELECT
+                        q.time AS time,
                         q.device_eui,
                         q.device_id,
                         q.barn_id,
@@ -2497,11 +2428,14 @@ class PGDB:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 query = """
                     SELECT
+                        -- Bucket on local-clock boundaries, then convert the bucket
+                        -- back to a true instant (NOT relabelled as UTC). Yields a
+                        -- timestamptz the client can parse as an absolute time.
                         date_bin(
                             make_interval(mins => %s),
                             time AT TIME ZONE 'Europe/Ljubljana',
                             TIMESTAMP '2000-01-01'
-                        ) AT TIME ZONE 'UTC' AS obs_time,
+                        ) AT TIME ZONE 'Europe/Ljubljana' AS obs_time,
                         AVG(temperature) AS temperature,
                         AVG(humidity) AS humidity,
                         AVG((1.8 * temperature + 32) - (0.55 - 0.0055 * humidity) * (1.8 * temperature - 26)) AS thi
@@ -2537,92 +2471,6 @@ class PGDB:
                     ORDER BY name
                 """)
                 return cursor.fetchall()
-    
-    def create_password_reset_token(self, user_id: str, token: str):
-        with self.get_connection_context() as conn:
-            try:
-                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                    from datetime import datetime, timedelta
-                    expires_at = datetime.utcnow() + timedelta(hours=1)
-                    
-                    cursor.execute("""
-                        INSERT INTO password_reset_tokens (user_id, token, expires_at)
-                        VALUES (%s, %s, %s)
-                        RETURNING token, expires_at
-                    """, (user_id, token, expires_at))
-                    
-                    result = cursor.fetchone()
-                    conn.commit()
-                    return result
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error creating password reset token: {e}")
-                raise
-    
-    def validate_reset_token(self, token: str):
-        with self.get_connection_context() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                from datetime import datetime
-                cursor.execute("""
-                    SELECT user_id, expires_at, used
-                    FROM password_reset_tokens
-                    WHERE token = %s
-                """, (token,))
-                
-                result = cursor.fetchone()
-                if not result:
-                    return None
-                
-                if result['used']:
-                    return None
-                
-                if result['expires_at'] < datetime.utcnow():
-                    return None
-                
-                return result['user_id']
-    
-    def mark_reset_token_used(self, token: str):
-        with self.get_connection_context() as conn:
-            try:
-                with conn.cursor() as cursor:
-                    cursor.execute("""
-                        UPDATE password_reset_tokens
-                        SET used = TRUE
-                        WHERE token = %s
-                    """, (token,))
-                    conn.commit()
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error marking reset token as used: {e}")
-                raise
-    
-    def update_user_password(self, user_id: str, new_password: str):
-        with self.get_connection_context() as conn:
-            try:
-                with conn.cursor() as cursor:
-                    hashed_password = self.make_django_password(new_password)
-
-                    cursor.execute("""
-                        UPDATE auth_user
-                        SET password = %s
-                        WHERE id = %s
-                    """, (hashed_password, user_id))
-                    
-                    conn.commit()
-            except Exception as e:
-                conn.rollback()
-                logger.error(f"Error updating user password: {e}")
-                raise
-    
-    def get_user_email_by_email(self, email: str):
-        with self.get_connection_context() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cursor:
-                cursor.execute("""
-                    SELECT id, email
-                    FROM auth_user
-                    WHERE email = %s
-                """, (email,))
-                return cursor.fetchone()
     
     def create_calendar_activities(self, activities: list):
         with self.get_connection_context() as conn:

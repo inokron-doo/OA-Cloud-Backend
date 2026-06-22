@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import traceback
 import httpx
 from collections import defaultdict
@@ -108,7 +108,9 @@ async def get_current_weather(
                 humidity = main_data.get('humidity')
                 dt_value = data.get('data', {}).get('dt')
                 if dt_value is not None:
-                    obs_time = datetime.utcfromtimestamp(dt_value).isoformat()
+                    # Emit a true-UTC instant with an explicit offset (not naive),
+                    # so clients never have to guess the timezone.
+                    obs_time = datetime.fromtimestamp(dt_value, tz=timezone.utc).isoformat()
             
             thi = None
             if temperature is not None and humidity is not None:
@@ -251,7 +253,7 @@ async def get_barn_weather_forecast(
         if response.status_code == 200:
             raw_items = response.json()
             if isinstance(raw_items, list):
-                now_utc = datetime.utcnow()
+                now_utc = datetime.now(timezone.utc)
                 cutoff_utc = now_utc + timedelta(hours=hours)
                 grouped = defaultdict(dict)
 
@@ -269,8 +271,10 @@ async def get_barn_weather_forecast(
                     except Exception:
                         continue
 
-                    if ts_dt.tzinfo is not None:
-                        ts_dt = ts_dt.replace(tzinfo=None)
+                    # Source timestamps are UTC; keep them as true-UTC instants
+                    # (with an explicit offset) rather than stripping the zone.
+                    if ts_dt.tzinfo is None:
+                        ts_dt = ts_dt.replace(tzinfo=timezone.utc)
 
                     if ts_dt < now_utc or ts_dt > cutoff_utc:
                         continue

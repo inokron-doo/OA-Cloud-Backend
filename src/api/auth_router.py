@@ -1,13 +1,9 @@
-import os
 import traceback
-import secrets
 
-from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.responses import JSONResponse
-from email_validator import validate_email, EmailNotValidError
 
-from src.api.base_models import UserRegister, UserLogin, TokenRefresh, TokenValidate, ForgotPassword, ResetPassword
+from src.api.base_models import UserLogin, TokenRefresh, TokenValidate
 from src.utils.db import PGDB
 from src.utils.jwt_utils import (
     create_access_token,
@@ -16,42 +12,10 @@ from src.utils.jwt_utils import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
 from src.utils.utils import get_current_user
-from src.utils.mail_utils import email_service
-
-load_dotenv()
 
 router = APIRouter()
 db = PGDB()
 
-
-@router.post("/register/", status_code=status.HTTP_201_CREATED)
-def register_user(user: UserRegister):
-    """Register a new user account.
-
-    Username is normalised to lowercase. Returns 409 if the username or email already exists.
-    """
-    try:
-        valid = validate_email(user.email)
-        email = valid.email
-    except EmailNotValidError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid email: {str(e)}")
-
-    username = user.username.strip().lower()
-
-    user_dict = {
-        "username": username,
-        "email": email,
-        "password": user.password,
-    }
-
-    try:
-        db.register_user(user_dict)
-        return JSONResponse(status_code=201, content={"message": "User registered successfully"})
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except Exception:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Registration failed")
 
 @router.post(
     "/login/",
@@ -90,8 +54,7 @@ def login_user(user: UserLogin):
         if '@' in user.username:
             user_dict = {"email": user.username, "password": user.password}
         else:
-            normalized_username = user.username.strip().lower()
-            user_dict = {"username": normalized_username, "password": user.password}
+            user_dict = {"username": user.username.strip(), "password": user.password}
         
         result = db.login_user(user_dict)
         access_token = create_access_token({
@@ -233,59 +196,6 @@ def refresh_token(refresh_data: TokenRefresh):
         raise HTTPException(status_code=401, detail=str(e))
     except Exception:
         raise HTTPException(status_code=500, detail="Token refresh failed")
-
-@router.post("/forgot-password/")
-def forgot_password(request: ForgotPassword):
-    """Request a password-reset email.
-
-    Always returns a 200 success message regardless of whether the email exists
-    (to prevent user enumeration). The reset link embedded in the email is valid for 1 hour.
-    """
-    try:
-        user = db.get_user_email_by_email(request.email)
-        
-        if not user:
-            return {"message": "If the email exists, a reset link has been sent"}
-        
-        reset_token = secrets.token_urlsafe(32) 
-        db.create_password_reset_token(user['id'], reset_token)
-        
-        # Try to send email but don't fail if it doesn't work
-        try:
-            email_sent = email_service.send_password_reset_email(user['email'], reset_token)
-            if not email_sent:
-                logger.warning(f"Failed to send password reset email to {user['email']}, but token was created")
-        except Exception as e:
-            logger.error(f"Error sending password reset email: {e}")
-        
-        return {"message": "If the email exists, a reset link has been sent"}
-    except HTTPException:
-        raise
-    except Exception:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Password reset request failed")
-
-@router.post("/reset-password/")
-def reset_password(request: ResetPassword):
-    """Reset a user's password using the token from the reset email.
-
-    Returns 400 if the token is invalid or expired (tokens expire after 1 hour).
-    """
-    try:
-        user_id = db.validate_reset_token(request.token)
-        
-        if not user_id:
-            raise HTTPException(status_code=400, detail="Invalid or expired reset token")
-        
-        db.update_user_password(user_id, request.new_password)
-        db.mark_reset_token_used(request.token)
-        
-        return {"message": "Password reset successfully"}
-    except HTTPException:
-        raise
-    except Exception:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail="Password reset failed")
 
 @router.get(
     "/me/",

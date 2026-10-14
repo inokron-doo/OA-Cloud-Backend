@@ -18,7 +18,6 @@ class EmailService:
         self.smtp_password = os.getenv('SMTP_PASSWORD') or os.getenv('MAIL_PASSWORD')
         self.from_email = os.getenv('SMTP_FROM_EMAIL') or os.getenv('MAIL_SENDER') or self.smtp_user
         self.smtp_use_tls = (os.getenv('SMTP_USE_TLS', 'true').lower() == 'true')
-        self.frontend_url = os.getenv('FRONTEND_URL')
 
     def _validate_smtp_settings(self) -> bool:
         missing = []

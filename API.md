@@ -23,18 +23,14 @@ downstream dependencies.
 
 ## Authentication
 
-All endpoints require a JWT Bearer token except the four public auth endpoints:
-`POST /api/v1/register/`, `POST /api/v1/login/`, `POST /api/v1/forgot-password/`, `POST /api/v1/reset-password/`.
+All endpoints require a JWT Bearer token except the public auth endpoints:
+`POST /api/v1/login/`, `POST /api/v1/token/refresh/`, `POST /api/v1/validate_token/`.
 
-### 1 — Register
+There is no self-registration or password reset. Users are created and managed in
+Farm Calendar's Django `/admin/` (shared `auth_user` table); the first admin account
+is created from `ADMIN_*` by the `OA-Cloud-Deploy` stack.
 
-```bash
-curl -s -X POST http://localhost:8080/api/v1/register/ \
-  -H "Content-Type: application/json" \
-  -d '{"username": "alice", "email": "alice@example.com", "password": "secret"}'
-```
-
-### 2 — Login
+### 1 — Login
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/login/ \
@@ -61,7 +57,7 @@ The `access_token` is also set as an httpOnly `access_token` cookie on the login
 response. The Farm Calendar SSO flow uses this cookie rather than the Bearer header;
 all other callers should prefer the header.
 
-### 3 — Use the token
+### 2 — Use the token
 
 ```bash
 export TOKEN="<access_token from login>"
@@ -70,7 +66,7 @@ curl -s http://localhost:8080/api/v1/farms \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-### 4 — Refresh
+### 3 — Refresh
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/token/refresh/ \
@@ -81,7 +77,7 @@ curl -s -X POST http://localhost:8080/api/v1/token/refresh/ \
 Returns a new `access_token` (and renews the cookie). Returns 401 if the refresh
 token is expired or blacklisted.
 
-### 5 — Logout
+### 4 — Logout
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/logout/ \
@@ -139,13 +135,10 @@ HTTP 422.
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/register/` | Register a new user |
 | POST | `/login/` | Obtain access + refresh tokens |
 | POST | `/logout/` | Blacklist refresh token |
 | POST | `/validate_token/` | Check token validity (no auth required) |
 | POST | `/token/refresh/` | Get a new access token |
-| POST | `/forgot-password/` | Send password-reset email |
-| POST | `/reset-password/` | Apply reset token + new password |
 | GET | `/me/` | Return current user profile |
 
 ---
@@ -344,6 +337,6 @@ return 502. The microservice is configured via the `PREDICTION_SERVICE_URL` env 
 | `MOOHERO_CLIENT_ID` | — | MooHero API client ID |
 | `MOOHERO_CLIENT_SECRET` | — | MooHero API client secret |
 | `CORS_ORIGINS` | localhost dev origins | Comma-separated allowed origins. `*` = wildcard (credentials disabled). |
-| `SMTP_*` | — | Mail settings for password-reset emails |
+| `SMTP_*` | — | Mail settings for alert emails |
 
 Copy `.env.example` to `.env` and fill in the required values before starting.

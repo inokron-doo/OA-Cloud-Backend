@@ -59,8 +59,13 @@ uvicorn main:app --host 0.0.0.0 --port 8080
 ## Authentication
 
 Obtain a JWT via `POST /api/v1/login/` and pass it as `Authorization: Bearer <token>`
-or an `access_token` cookie. The four public endpoints are `register`, `login`,
-`forgot-password`, and `reset-password`.
+or an `access_token` cookie. The public endpoints are `login`, `token/refresh`, and
+`validate_token`.
+
+There is no self-registration or password-reset endpoint. Users live in the
+`auth_user` table shared with the Farm Calendar, and are created, disabled, and given
+new passwords in Farm Calendar's Django `/admin/`. The first admin account is created
+from `ADMIN_*` by the `OA-Cloud-Deploy` stack.
 
 ## Configuration
 
